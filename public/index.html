@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SjAgent - Cluster Monitor</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-around;
+            padding: 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .status-item {
+            text-align: center;
+        }
+        .status-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        .status-value {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .connected { color: #28a745; }
+        .disconnected { color: #dc3545; }
+        .content {
+            display: flex;
+            min-height: 600px;
+        }
+        .panel {
+            flex: 1;
+            padding: 20px;
+            border-right: 1px solid #dee2e6;
+        }
+        .panel:last-child {
+            border-right: none;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #495057;
+        }
+        .job-form {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 10px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .jobs-list, .logs {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .job-item, .log-item {
+            padding: 10px;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        .job-item:last-child, .log-item:last-child {
+            border-bottom: none;
+        }
+        .job-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-queued { background: #fff3cd; color: #856404; }
+        .status-processing { background: #cce5ff; color: #004085; }
+        .status-completed { background: #d4edda; color: #155724; }
+        .status-failed { background: #f8d7da; color: #721c24; }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 SjAgent - Cluster Monitor</h1>
+            <p>Real-time backtesting cluster management</p>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-label">WebSocket</div>
+                <div class="status-value" id="ws-status">
+                    <span class="disconnected">●</span> Disconnected
+                </div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Jobs Queued</div>
+                <div class="status-value" id="jobs-queued">0</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Jobs Processing</div>
+                <div class="status-value" id="jobs-processing">0</div>
+            </div>
+            <div class="status-item">
+                <div class="status-label">Jobs Completed</div>
+                <div class="status-value" id="jobs-completed">0</div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="panel">
+                <div class="section-title">📝 Submit Backtest Job</div>
+
+                <div class="job-form">
+                    <div class="form-group">
+                        <label for="strategies">Strategies (comma-separated):</label>
+                        <input type="text" id="strategies" placeholder="rsi,macd,momentum" value="rsi">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="symbols">Symbols (comma-separated):</label>
+                        <input type="text" id="symbols" placeholder="RELIANCE,TCS,HDFC" value="RELIANCE">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="startDate">Start Date:</label>
+                        <input type="date" id="startDate" value="2020-01-01">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="endDate">End Date:</label>
+                        <input type="date" id="endDate" value="2020-12-31">
+                    </div>
+
+                    <button class="btn" id="submit-job" onclick="submitJob()">🚀 Submit Job</button>
+                </div>
+
+                <div class="section-title">📊 Active Jobs</div>
+                <div class="jobs-list" id="jobs-list">
+                    <div class="job-item">No active jobs</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="section-title">📋 Activity Logs</div>
+                <div class="logs" id="logs">
+                    <div class="log-item">🔌 Connecting to server...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const logsContainer = document.getElementById('logs');
+        const jobsList = document.getElementById('jobs-list');
+
+        // WebSocket event handlers
+        socket.on('connect', () => {
+            updateStatus('ws-status', 'connected', '● Connected');
+            log('🔌 Connected to SjAgent server');
+        });
+
+        socket.on('disconnect', () => {
+            updateStatus('ws-status', 'disconnected', '● Disconnected');
+            log('🔌 Disconnected from server');
+        });
+
+        socket.on('welcome', (data) => {
+            log(`👋 ${data.message}`);
+        });
+
+        socket.on('cluster:status', (data) => {
+            updateClusterStatus(data);
+            log(`📊 Cluster status updated: ${JSON.stringify(data)}`);
+        });
+
+        socket.on('job:submitted', (data) => {
+            addJob(data);
+            log(`📝 Job submitted: ${data.id}`);
+        });
+
+        socket.on('job:started', (data) => {
+            updateJobStatus(data.id, 'processing');
+            log(`▶️ Job started: ${data.id}`);
+        });
+
+        socket.on('job:progress', (data) => {
+            updateJobProgress(data.id, data.progress);
+            log(`📈 Job progress: ${data.id} - ${data.progress}%`);
+        });
+
+        socket.on('job:completed', (data) => {
+            updateJobStatus(data.id, 'completed');
+            log(`✅ Job completed: ${data.id}`);
+        });
+
+        socket.on('job:failed', (data) => {
+            updateJobStatus(data.id, 'failed');
+            log(`❌ Job failed: ${data.id} - ${data.error}`);
+        });
+
+        // UI functions
+        function updateStatus(elementId, statusClass, text) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<span class="${statusClass}">●</span> ${text}`;
+        }
+
+        function updateClusterStatus(data) {
+            document.getElementById('jobs-queued').textContent = data.jobs?.queued || 0;
+            document.getElementById('jobs-processing').textContent = data.jobs?.processing || 0;
+            document.getElementById('jobs-completed').textContent = data.jobs?.completed || 0;
+        }
+
+        function log(message) {
+            const logItem = document.createElement('div');
+            logItem.className = 'log-item';
+            logItem.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsContainer.appendChild(logItem);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        function addJob(jobData) {
+            const jobItem = document.createElement('div');
+            jobItem.className = 'job-item';
+            jobItem.id = `job-${jobData.id}`;
+            jobItem.innerHTML = `
+                <div><strong>${jobData.id}</strong></div>
+                <div>Strategies: ${jobData.strategies.join(', ')}</div>
+                <div>Symbols: ${jobData.symbols.join(', ')}</div>
+                <div>Period: ${jobData.startDate} to ${jobData.endDate}</div>
+                <div class="job-status status-${jobData.status}">${jobData.status.toUpperCase()}</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${jobData.progress}%"></div>
+                </div>
+            `;
+            jobsList.appendChild(jobItem);
+        }
+
+        function updateJobStatus(jobId, status) {
+            const jobElement = document.getElementById(`job-${jobId}`);
+            if (jobElement) {
+                const statusElement = jobElement.querySelector('.job-status');
+                statusElement.className = `job-status status-${status}`;
+                statusElement.textContent = status.toUpperCase();
+            }
+        }
+
+        function updateJobProgress(jobId, progress) {
+            const jobElement = document.getElementById(`job-${jobId}`);
+            if (jobElement) {
+                const progressFill = jobElement.querySelector('.progress-fill');
+                progressFill.style.width = `${progress}%`;
+            }
+        }
+
+        async function submitJob() {
+            const submitBtn = document.getElementById('submit-job');
+            const originalText = submitBtn.textContent;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            try {
+                const response = await fetch('/jobs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        strategies: document.getElementById('strategies').value.split(',').map(s => s.trim()),
+                        symbols: document.getElementById('symbols').value.split(',').map(s => s.trim()),
+                        startDate: document.getElementById('startDate').value,
+                        endDate: document.getElementById('endDate').value
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    log(`✅ Job submitted: ${result.jobId}`);
+                    // Clear form
+                    document.getElementById('strategies').value = '';
+                    document.getElementById('symbols').value = '';
+                } else {
+                    log(`❌ Submission failed: ${result.error}`);
+                }
+            } catch (error) {
+                log(`❌ Network error: ${error.message}`);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        }
+
+        // Initialize
+        log('🚀 SjAgent Monitor initialized');
+        socket.emit('subscribe', ['cluster:status', 'job:submitted', 'job:started', 'job:progress', 'job:completed', 'job:failed']);
+    </script>
+</body>
+</html>
