@@ -18,7 +18,7 @@ require('dotenv').config();
 // Configuration
 const PORT = process.env.PORT || 3000;
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
-const I7_HOST = process.env.I7_HOST || '172.18.93.7';
+const I7_HOST = process.env.I7_HOST || '192.168.29.173';
 const I7_USER = process.env.I7_USER || 'sivarajumalladi';
 
 // Initialize Express app

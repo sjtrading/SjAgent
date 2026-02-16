@@ -51,7 +51,7 @@ npm install
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your Redis and cluster settings (I7_HOST=172.18.93.7)
+# Edit .env with your Redis and cluster settings (I7_HOST=192.168.29.173)
 
 # Start the server
 npm start
